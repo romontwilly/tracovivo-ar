@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Traço Vivo AR</title>
+  <script src="https://cdn.jsdelivr.net/npm/aframe@1.5.0/dist/aframe-master.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
+  <style>
+    html, body { margin: 0; height: 100%; background: #000; color: #fff; font-family: system-ui, sans-serif; overflow: hidden; }
+    #ui { position: fixed; inset: 0; z-index: 10; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; padding: 24px; text-align: center; background: #111; }
+    #ui h1 { font-size: 20px; margin: 0; }
+    #msg { font-size: 15px; opacity: .85; max-width: 320px; }
+    #start { display: none; font-size: 17px; padding: 14px 28px; border: 0; border-radius: 12px; background: #970000; color: #fff; }
+    #hint { position: fixed; bottom: calc(24px + env(safe-area-inset-bottom)); left: 0; right: 0; z-index: 5; text-align: center; font-size: 14px; display: none; text-shadow: 0 1px 3px #000; }
+    #arVideo { display: none; }
+  </style>
+</head>
+<body>
+  <div id="ui">
+    <h1 id="title">Traço Vivo</h1>
+    <div id="msg">Carregando a obra…</div>
+    <button id="start">Abrir câmera</button>
+  </div>
+  <div id="hint">Aponte a câmera para a obra</div>
+  <video id="arVideo" crossorigin="anonymous" playsinline webkit-playsinline loop preload="auto"></video>
+
+  <script>
+    // Public anon key: safe in the browser; access is controlled by Supabase RLS.
+    const SUPABASE_URL = 'https://phbpednylzgfwlboaymc.supabase.co';
+    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBoYnBlZG55bHpnZndsYm9heW1jIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg5OTEyODAsImV4cCI6MjEwNDU2NzI4MH0.WjqdKcJlC3414IDjiClr_grDVJ7Wd6las0_XuN4Yewk';
+
+    const msg = document.getElementById('msg');
+    const startBtn = document.getElementById('start');
+    const video = document.getElementById('arVideo');
+    const fail = (text) => { msg.textContent = text; startBtn.style.display = 'none'; };
+
+    const loadImage = (src) => new Promise((resolve, reject) => {
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = () => resolve(img);
+      img.onerror = () => reject(new Error('marker'));
+      img.src = src;
+    });
+
+    async function main() {
+      const id = new URLSearchParams(location.search).get('id');
+      if (!id || !/^\d+$/.test(id)) return fail('Link inválido: falta o código da obra.');
+
+      let art;
+      try {
+        const res = await fetch(`${SUPABASE_URL}/rest/v1/arExperiences?id=eq.${id}&select=title,marker_url,asset_url`, {
+          headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${SUPABASE_ANON_KEY}` },
+        });
+        if (!res.ok) throw new Error(res.status);
+        [art] = await res.json();
+      } catch (e) {
+        return fail('Não foi possível conectar ao servidor. Tente novamente mais tarde.');
+      }
+      if (!art || !art.marker_url || !art.asset_url) return fail('Obra não encontrada.');
+      document.getElementById('title').textContent = art.title || 'Traço Vivo';
+
+      let img, mindUrl;
+      try {
+        // Older artworks store a precompiled .mind target instead of an image.
+        if (/\.mind(\?|$)/i.test(art.marker_url)) {
+          video.src = art.asset_url;
+          msg.textContent = 'Pronto! Toque no botão e aponte a câmera para a obra.';
+          startBtn.style.display = 'block';
+          startBtn.onclick = () => { video.play().then(() => video.pause()).catch(() => {}); startAR(art.marker_url, 1); };
+          return;
+        }
+        img = await loadImage(art.marker_url);
+        // shortcut: the marker is compiled on every visit (~5-30s on phones); precompile the .mind file on upload if this gets slow.
+        const compiler = new MINDAR.IMAGE.Compiler();
+        await compiler.compileImageTargets([img], (p) => { msg.textContent = `Preparando a obra… ${Math.round(p)}%`; });
+        mindUrl = URL.createObjectURL(new Blob([await compiler.exportData()]));
+      } catch (e) {
+        return fail('Não foi possível carregar a imagem da obra.');
+      }
+
+      video.src = art.asset_url;
+      msg.textContent = 'Pronto! Toque no botão e aponte a câmera para a obra.';
+      startBtn.style.display = 'block';
+      startBtn.onclick = () => {
+        // Play once inside the tap so iOS allows playback with sound later.
+        video.play().then(() => video.pause()).catch(() => {});
+        startAR(mindUrl, img.naturalHeight / img.naturalWidth);
+      };
+    }
+
+    function startAR(mindUrl, markerRatio) {
+      document.getElementById('ui').style.display = 'none';
+      document.getElementById('hint').style.display = 'block';
+
+      const scene = document.createElement('a-scene');
+      scene.setAttribute('mindar-image', `imageTargetSrc: ${mindUrl}; uiScanning: no; uiLoading: no; uiError: yes`);
+      scene.setAttribute('color-space', 'sRGB');
+      scene.setAttribute('renderer', 'colorManagement: true; physicallyCorrectLights: true');
+      scene.setAttribute('vr-mode-ui', 'enabled: false');
+      scene.setAttribute('device-orientation-permission-ui', 'enabled: false');
+      scene.innerHTML = `
+        <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
+        <a-entity id="target" mindar-image-target="targetIndex: 0">
+          <a-video id="plane" src="#arVideo" width="1" height="${markerRatio}" position="0 0 0"></a-video>
+        </a-entity>`;
+      document.body.appendChild(scene);
+
+      const fitVideo = () => {
+        if (video.videoWidth) document.getElementById('plane').setAttribute('height', video.videoHeight / video.videoWidth);
+      };
+      video.addEventListener('loadedmetadata', fitVideo);
+      scene.addEventListener('loaded', () => {
+        fitVideo();
+        const target = document.getElementById('target');
+        target.addEventListener('targetFound', () => { document.getElementById('hint').style.display = 'none'; video.play().catch(() => {}); });
+        target.addEventListener('targetLost', () => { document.getElementById('hint').style.display = 'block'; video.pause(); });
+      });
+      scene.addEventListener('arError', () => {
+        document.getElementById('ui').style.display = 'flex';
+        fail('Não foi possível abrir a câmera. Verifique a permissão do navegador.');
+      });
+    }
+
+    main();
+  </script>
+</body>
+</html>
