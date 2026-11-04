@@ -69,7 +69,7 @@
           video.src = art.asset_url;
           msg.textContent = 'Pronto! Toque no botão e aponte a câmera para a obra.';
           startBtn.style.display = 'block';
-          startBtn.onclick = () => { video.play().then(() => video.pause()).catch(() => {}); startAR(art.marker_url, 1); };
+          startBtn.onclick = () => { video.play().then(() => video.pause()).catch(() => {}); startAR(art.marker_url, null); };
           return;
         }
         img = await loadImage(art.marker_url);
@@ -96,7 +96,8 @@
       document.getElementById('hint').style.display = 'block';
 
       const scene = document.createElement('a-scene');
-      scene.setAttribute('mindar-image', `imageTargetSrc: ${mindUrl}; uiScanning: no; uiLoading: no; uiError: yes`);
+      // Lower filterMinCF/filterBeta = smoother (less jitter), slightly more lag.
+      scene.setAttribute('mindar-image', `imageTargetSrc: ${mindUrl}; filterMinCF: 0.0001; filterBeta: 0.001; warmupTolerance: 5; missTolerance: 5; uiScanning: no; uiLoading: no; uiError: yes`);
       scene.setAttribute('color-space', 'sRGB');
       scene.setAttribute('renderer', 'colorManagement: true; physicallyCorrectLights: true');
       scene.setAttribute('vr-mode-ui', 'enabled: false');
@@ -104,12 +105,13 @@
       scene.innerHTML = `
         <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
         <a-entity id="target" mindar-image-target="targetIndex: 0">
-          <a-video id="plane" src="#arVideo" width="1" height="${markerRatio}" position="0 0 0"></a-video>
+          <a-video id="plane" src="#arVideo" width="1" height="${markerRatio ?? 1}" position="0 0 0"></a-video>
         </a-entity>`;
       document.body.appendChild(scene);
 
+      // .mind targets (ratio unknown) fall back to the video's shape; image markers keep the marker's exact shape.
       const fitVideo = () => {
-        if (video.videoWidth) document.getElementById('plane').setAttribute('height', video.videoHeight / video.videoWidth);
+        if (markerRatio == null && video.videoWidth) document.getElementById('plane').setAttribute('height', video.videoHeight / video.videoWidth);
       };
       video.addEventListener('loadedmetadata', fitVideo);
       scene.addEventListener('loaded', () => {
