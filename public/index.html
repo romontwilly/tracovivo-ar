@@ -16,6 +16,9 @@
     #start { display: none; font-size: 17px; padding: 14px 28px; border: 0; border-radius: 12px; background: #970000; color: #fff; }
     #hint { position: fixed; bottom: calc(24px + env(safe-area-inset-bottom)); left: 0; right: 0; z-index: 5; text-align: center; font-size: 14px; display: none; text-shadow: 0 1px 3px #000; }
     #arVideo { display: none; }
+    /* Camera feed and 3D canvas must share one box, or the overlay drifts/scales on iOS Safari. */
+    #arContainer { position: fixed; inset: 0; overflow: hidden; }
+    #arContainer a-scene { width: 100%; height: 100%; }
   </style>
 </head>
 <body>
@@ -95,7 +98,11 @@
       document.getElementById('ui').style.display = 'none';
       document.getElementById('hint').style.display = 'block';
 
+      const container = document.createElement('div');
+      container.id = 'arContainer';
+      document.body.appendChild(container);
       const scene = document.createElement('a-scene');
+      scene.setAttribute('embedded', '');
       // One-euro filter: low minCF = steady when still; higher beta = less lag when moving.
       // Tunable per test via ?mincf=&beta= without redeploying.
       const q = new URLSearchParams(location.search);
@@ -110,7 +117,7 @@
         <a-entity id="target" mindar-image-target="targetIndex: 0">
           <a-video id="plane" src="#arVideo" width="1" height="${markerRatio ?? 1}" position="0 0 0"></a-video>
         </a-entity>`;
-      document.body.appendChild(scene);
+      container.appendChild(scene);
 
       // .mind targets (ratio unknown) fall back to the video's shape; image markers keep the marker's exact shape.
       const fitVideo = () => {
