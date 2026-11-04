@@ -96,8 +96,11 @@
       document.getElementById('hint').style.display = 'block';
 
       const scene = document.createElement('a-scene');
-      // Lower filterMinCF/filterBeta = smoother (less jitter), slightly more lag.
-      scene.setAttribute('mindar-image', `imageTargetSrc: ${mindUrl}; filterMinCF: 0.0001; filterBeta: 0.001; warmupTolerance: 5; missTolerance: 5; uiScanning: no; uiLoading: no; uiError: yes`);
+      // One-euro filter: low minCF = steady when still; higher beta = less lag when moving.
+      // Tunable per test via ?mincf=&beta= without redeploying.
+      const q = new URLSearchParams(location.search);
+      const num = (k, d) => (Number.isFinite(parseFloat(q.get(k))) ? parseFloat(q.get(k)) : d);
+      scene.setAttribute('mindar-image', `imageTargetSrc: ${mindUrl}; filterMinCF: ${num('mincf', 0.0001)}; filterBeta: ${num('beta', 1)}; warmupTolerance: 5; missTolerance: 5; uiScanning: no; uiLoading: no; uiError: yes`);
       scene.setAttribute('color-space', 'sRGB');
       scene.setAttribute('renderer', 'colorManagement: true; physicallyCorrectLights: true');
       scene.setAttribute('vr-mode-ui', 'enabled: false');
