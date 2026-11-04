@@ -130,6 +130,12 @@
         target.addEventListener('targetFound', () => { document.getElementById('hint').style.display = 'none'; video.play().catch(() => {}); });
         target.addEventListener('targetLost', () => { document.getElementById('hint').style.display = 'block'; video.pause(); });
       });
+      // MindAR re-fits camera feed + projection only on window 'resize'; Safari's toolbar
+      // animation changes the visible area without one, leaving a black band and an offset overlay.
+      const refit = () => window.dispatchEvent(new Event('resize'));
+      if (window.visualViewport) window.visualViewport.addEventListener('resize', refit);
+      window.addEventListener('orientationchange', () => setTimeout(refit, 300));
+      scene.addEventListener('arReady', () => { refit(); setTimeout(refit, 500); setTimeout(refit, 1500); });
       scene.addEventListener('arError', () => {
         document.getElementById('ui').style.display = 'flex';
         fail('Não foi possível abrir a câmera. Verifique a permissão do navegador.');
